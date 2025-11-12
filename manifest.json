@@ -14,7 +14,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["deck.js", "cardassets/*", "diceassets/*"],
+	"resources": ["deck.js", "cardassets/*", "diceassets/*", "inventory.js", "inventory/*.*", "inventory/index.json"],
       "matches": ["<all_urls>"]
     }
   ]

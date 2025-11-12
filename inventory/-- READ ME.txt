@@ -1,0 +1,12 @@
+Do you want to add you own images to the inventory? It's quite simple, here is a quick guide:
+
+1. Get your image, all images here are 256x256 but any resolution works (Square is better). You can use gimp, photoshop, pixlr (free online tool!) to compile them. Remove.bg is a useful online tool for removing the background. Save it as a .png or .jpg.
+2. Put your image in this inventory folder
+3. Go to the desired item in the extension, right click or shift click on the image to open the Item Editor. In the Appearance section type in the name of your image (i.e "pistol.png")
+
+If everything is entered correctly, your new image should appear
+
+Note: This will only allow you to manually add and match images, if you want to update it so it auto matches, you'll need to update the index.json file to include your image. 
+
+Optional: Share the missing item with me on Discord! I'm always looking to expand the items list.
+https://discord.gg/yMx6j79yez

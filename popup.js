@@ -1,4 +1,4 @@
-// Minimal popup to inject features on demand (MV3)
+// popup.js (MV3) — better diagnostics for injection
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -6,9 +6,33 @@ function runScript(tabId, file) {
   return chrome.scripting.executeScript({ target: { tabId }, files: [file] });
 }
 
-async function runFirstAvailable(tabId, candidates) {
-  for (const file of candidates) {
-    try { await runScript(tabId, file); return true; } catch (_) {}
+// Quick smoke test to see if *any* code can run on this tab
+async function canInject(tabId) {
+  try {
+    const [{ result } = {}] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => ({ href: location.href, ok: true })
+    });
+    return result?.ok === true;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function explainWhyCantInject(tab) {
+  const url = tab?.url || "";
+  const restrictedHosts = [
+    "chrome://", "edge://", "vivaldi://", "brave://",
+    "chrome-extension://", // includes PDF Viewer too
+    "https://chromewebstore.google.com", "https://chrome.google.com/webstore/"
+  ];
+  if (restrictedHosts.some(p => url.startsWith(p))) {
+    alert(`Chrome blocks injection on this page:\n\n${url}\n\nTry again on a regular http(s) site (e.g. chat.openai.com).`);
+    return true;
+  }
+  if (url.startsWith("file://")) {
+    alert(`This is a file:// URL:\n\n${url}\n\nOpen chrome://extensions → your extension → enable "Allow access to file URLs", then try again.`);
+    return true;
   }
   return false;
 }
@@ -43,46 +67,53 @@ async function toggleGx(tabId) {
 
 document.addEventListener("DOMContentLoaded", () => {
   chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
-    const tabId = tabs?.[0]?.id;
+    const tab = tabs?.[0];
+    const tabId = tab?.id;
     if (!tabId) return;
 
-    // GX Parsables
-    document.getElementById("enableGX").addEventListener("click", async () => {
-      const loaded = await isGxLoaded(tabId);
-      if (!loaded) {
-        await runScript(tabId, "content.js");     // content.js dynamically imports deck.js itself
-        await sleep(150);                          // let listeners attach
-      }
-      // open/bring up overlay
-      await toggleGx(tabId);
-      window.close();
-    });
+    const showRealError = (prefix, e) => {
+      const msg = e && (e.message || e.toString());
+      console.error(prefix, e);
+      alert(`${prefix}\n\n${msg || "(no message)"}`);
+    };
 
-    // Journal
-    document.getElementById("enableJournal").addEventListener("click", async () => {
-      try {
-        await runScript(tabId, "journal.js");
-      } catch (e) {
-        alert("Couldn't inject journal.js. Make sure it's in the root of the extension.");
-      }
-    });
+    // GX Parsables (unchanged)
+    const gxBtn = document.getElementById("enableGX");
+    if (gxBtn) {
+      gxBtn.addEventListener("click", async () => {
+        const loaded = await isGxLoaded(tabId);
+        if (!loaded) {
+          await chrome.scripting.executeScript({ target: { tabId }, files: ["content.js"] });
+          await sleep(150);
+        }
+        await toggleGx(tabId);
+        window.close();
+      });
+    }
 
-    // Map (tries map.js then mapOverlay.js)
-    document.getElementById("enableMap").addEventListener("click", async () => {
-      const ok = await runFirstAvailable(tabId, ["map.js", "mapOverlay.js"]);
-      if (!ok) alert("Couldn't inject map.js or mapOverlay.js.");
-    });
+    // Inventory
+    const invBtn = document.getElementById("enableInventory");
+    if (invBtn) {
+      invBtn.addEventListener("click", async () => {
+        // 1) Explain obvious blocked contexts
+        if (await explainWhyCantInject(tab)) return;
 
-    // Enable All (injects everything and opens GX)
-    document.getElementById("enableAll").addEventListener("click", async () => {
-      const loaded = await isGxLoaded(tabId);
-      if (!loaded) await runScript(tabId, "content.js");
-      await sleep(150);
-      await toggleGx(tabId);
+        // 2) Can we inject *anything*?
+        const ok = await canInject(tabId);
+        if (!ok) {
+          alert("Chrome blocked script injection on this page. Try another site (http/https), or check host permissions.");
+          return;
+        }
 
-      try { await runScript(tabId, "journal.js"); } catch (_) {}
-      await runFirstAvailable(tabId, ["map.js", "mapOverlay.js"]);
-      window.close();
-    });
+        // 3) Try inventory.js and surface the real error if any
+        try {
+          await runScript(tabId, "inventory.js");
+          window.close();
+        } catch (e) {
+          // Show a precise reason (e.g., “Cannot access contents of url …”)
+          showRealError("Couldn't inject inventory.js:", e);
+        }
+      });
+    }
   });
 });
